@@ -1,0 +1,153 @@
+"""
+Ипользование численных методов для решения системы дифференциальных уравнений, одно из которых имеет дробную произовдную по времени
+"""
+
+import numpy as np
+from scipy.special import gamma
+import time
+from datetime import datetime
+import matplotlib.pyplot as plt
+
+
+
+now = datetime.now()
+current_time = now.strftime("%H:%M:%S")
+print(current_time)
+start = time.time()
+N = 128 # Точки по пространству
+M = 128 # Точки по времени
+print(M, 'M')
+print(N, 'N')
+alpha = 0.9
+Time = 10
+rho = 1
+mu = 1
+tau_0 = 1
+tau_1 = 1.2
+dt = 1 / M
+dx = 1 / N
+x = np.linspace(0, 1, N + 1)
+t = np.linspace(0, Time, Time * (M) + 1)
+X, T = np.meshgrid(x, t)
+dim = Time * (M) + 1
+
+# Создание массивов для хранения информации
+u = np.zeros((N + 1, dim))
+w = np.zeros((N + 1, dim))
+phi = np.zeros(N + 1)
+psi = np.zeros(N + 1)
+
+
+for m in range(0, N + 1):
+    phi[m] = np.sin(np.pi * m / N)
+
+for m in range(0, N + 1):
+    psi[m] = 0
+
+
+def f(a, b):
+    res = a * 0 + b * 0
+    return res
+
+
+def d(a):
+    res = 1 / (gamma(2 - alpha) * dt ** alpha) * (a ** (1 - alpha) - (a - 1) ** (1 - alpha))
+    return res
+
+
+def phixx(a):
+    res = (phi[a + 1] - 2 * phi[a] + phi[a - 1]) / dx ** 2
+    return res
+
+
+def uxx(a, b):
+    res = (u[a + 1][b] - 2 * u[a][b] + u[a - 1][b]) / dx ** 2
+
+    return res
+
+
+def wxx(a, b):
+    res = (w[a + 1][b] - 2 * w[a][b] + w[a - 1][b]) / dx ** 2
+    return res
+
+
+def summa(c, i):
+    res = 0
+    # цикл от 1 до с-1 (буква c вместо n для корректной работы программы)
+    for j in range(1, c):
+        res += (d(c - j + 1) - d(c - j)) * w[i][j]
+    return res
+
+# Нулевой временной слой
+for i in range(0, N + 1):
+    u[i][0] = phi[i]
+    w[i][0] = phi[i]
+
+# Граничные условия
+for n in range(0, (M) * Time + 1):
+    u[0][n] = 0
+    w[0][n] = 0
+    u[-1][n] = 0
+    w[-1][n] = 0
+
+# Первый времнной слой
+for i in range(1, N):
+    u[i][1] = phi[i] + dt * psi[i] + dt ** 2 / (1 * 2 * rho) * (f(i, 0) + mu * phixx(i))
+
+for i in range(1, N):
+    w[i][1] = 1 / (1 + tau_0 * d(1)) * (u[i][1] + tau_0 * d(1) * phi[i])
+
+# Вычисление втрого слоя по времени для u
+right_part = np.zeros(N + 1)
+n = 1
+for l in range(1, N):
+    right_part[l] = rho / dt ** 2 * (2 * u[l][n] - u[l][n - 1]) + mu * tau_1 / (2 * tau_0) * uxx(l, n - 1) \
+                    - mu * (tau_1 - tau_0) * 1 / tau_0 * wxx(l, n) + f(l, n)
+right_part[-1] = 0
+a = -mu * tau_1 / (2 * tau_0 * dx ** 2)
+b = rho / dt ** 2 + (mu * tau_1 / (dx ** 2 * tau_0))
+A = b * np.eye(N + 1) + a * np.eye(N + 1, k=1) + a * np.eye(N + 1, k=-1)
+A[0][:] = 0
+A[0][0] = 1
+A[-1][:] = 0
+A[-1][-1] = 1
+
+C = np.linalg.solve(A, right_part)
+np.copyto(u.T[:][2], C)
+
+
+for n in range(2, (M) * Time):
+    right_part = np.zeros(N + 1)
+    for i in range(1, N):
+        w[i][n] = (- tau_0 * (summa(n, i)) + u[i][n] + tau_0 * d(n) * phi[i] ) * 1 / ((1 + tau_0 * d(1)))
+    a = -mu * tau_1 / (2 * tau_0 * dx ** 2)
+    b = rho / dt ** 2 + (mu * tau_1 / (dx ** 2 * tau_0))  # /0.225
+    A = b * np.eye(N + 1) + a * np.eye(N + 1, k=1) + a * np.eye(N + 1, k=-1)
+    A[0][:] = 0
+    A[0][0] = 1
+    A[-1][:] = 0
+    A[-1][-1] = 1
+    for l in range(1, N):
+        right_part[l] = rho / (dt ** 2) * (2 * u[l][n] - u[l][n - 1]) + mu * tau_1 / (2 * tau_0) * uxx(l, n - 1) \
+                        - mu * (tau_1 - tau_0) * 1 / (tau_0) * wxx(l, n) + f(l, n)
+    right_part[-1] = 0
+    C = np.linalg.solve(A, right_part)
+    np.copyto(u.T[:][n + 1], C)
+
+end = time.time() - start
+print(end, "seconds")
+
+# Построение графиков
+num = N / 2
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+ax.plot_surface(X, T, u.T, cmap='viridis')
+ax.set_xlabel('x')
+ax.set_ylabel('t')
+ax.set_zlabel('u(x, t)')
+plt.show()
+plt.plot(t, u[:][int(num)], label='Полуявная схема')
+plt.xlabel('Время, t')
+plt.ylabel('Перемещение, u(0.5, t)')
+plt.legend()
+plt.show()
